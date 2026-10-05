@@ -1,0 +1,291 @@
+// Load PETSc and Elements
+load "PETSc"
+load "Element_P3"
+load "Element_P4"
+
+real T   = 0.1;                // Final time
+int nref = 4;                  // Number of refinements
+real h;
+
+// Initialize error arrays
+real[int] L2error(nref);  
+real[int] L2errorp(nref); 
+real[int] L2errorv(nref); 
+real[int] L2errora(nref); 
+real[int] gradL2error(nref);
+real[int] EOCL2errorp(nref);
+real[int] EOCL2errorv(nref);
+real[int] EOCL2errora(nref);
+real[int] EOCgradL2error(nref);
+real[int] Dx(nref);            
+
+// =========================================================================
+// Material parameters 
+// =========================================================================
+real E          = 15e10;                     // Young's Modulus
+real nu         = 0.3;                       // Poisson ratio
+real rhos       = 2650;                      // Solid density
+real rhof       = 1000;                      // Fluid density
+real phi        = 0.15;                      // Porosity
+real eta        = 1e-3;                      // Dynamic viscosity
+real alpha      = 0.7;                       // Biot-Willis parameter
+real c0         = 1e-10;                     // Specific storage coefficient
+real formationF = 2.5/phi;                   // Formation factor (F)
+real c1ade      = 2.0953315e-06;             // ADE Parameter c1
+real d1ade      = 1.66666364e-06;            // ADE Parameter d1
+
+// Derived physical parameters
+real rho        = rhos*(1.0-phi) + rhof*phi; // Total density
+real nuk        = eta/rhof;                  // Kinematic viscosity (\eta_k)
+
+// Auxiliary ADE equation factors
+real factor1    = c1ade * formationF / (nuk * d1ade); 
+real factor2    = formationF / (nuk * d1ade); 
+
+// Artificial coupling parameters 
+real adeV       = 1.0;                      
+real adeP       = 1.0;
+real adeV2      = 1.0;
+real adeP2      = 1.0;
+real scaleP     = 10e10; // Pressure scaling
+
+// Lame parameters
+real mu         = E/(2.0*(1.0+nu));
+real lambdaLame = E*nu/((1.0+nu)*(1.0-2.0*nu)); 
+
+
+macro grad(u) [dx(u), dy(u)]                               // Gradient
+macro Div(u1,u2) (dx(u1) + dy(u2))                         // Divergence
+real sqrt2 = sqrt(2.);
+macro epsilon(u1,u2) [dx(u1),dy(u2),(dy(u1)+dx(u2))/sqrt2] // Strain 
+
+
+macro M(ux,uy,vx,vy,p,ax,ay, wx,wy,w2x,w2y,q,zx,zy) (
+      (ux)*(wx) + (uy)*(wy)
+    + rho*(vx)*(w2x) + rho*(vy)*(w2y)
+    + rhof*adeV2*(ax)*(w2x) + rhof*adeV2*(ay)*(w2y)
+    + scaleP*c0*(p)*(q)
+    + factor1*rhof*(ax)*(zx) + factor1*rhof*(ay)*(zy)
+    + rhof*adeV*(vx)*(zx) + rhof*adeV*(vy)*(zy)
+) //
+
+macro K(ux,uy,vx,vy,p,ax,ay, wx,wy,w2x,w2y,q,zx,zy) (
+    - (vx)*(wx) - (vy)*(wy)
+    + lambdaLame*Div(ux,uy)*Div(w2x,w2y)
+    + 2.*mu*(epsilon(ux,uy)'*epsilon(w2x,w2y))
+    - scaleP*alpha*Div(w2x,w2y)*(p)
+    + alpha*Div(vx,vy)*(q)
+    + adeP2*Div(ax,ay)*(q)
+    + factor2*rhof*(ax)*(zx) + factor2*rhof*(ay)*(zy)
+    - scaleP*adeP*(p)*Div(zx,zy)
+) //
+
+
+// =========================================================================
+// Refinement Loop
+// =========================================================================
+for (int n = 0; n < nref; n++) {
+
+    // Define mesh inside loop due to refinement updates
+    int P   = 4*2^(n);     // Space discretization
+    int N   = 2*2^(n);     // Number of time steps
+    mesh Th = square(P,P); // Mesh
+    real dt = T/N;         // Time step size
+    real t  = 0;           // Initial time
+    h       = 1./P;        // Mesh size
+    Dx[n]   = h;
+    cout << "===========================================" << endl;
+    cout << " Refinement step : " << n << " | Time step dt = " << dt << endl;
+
+    
+    //fespace Vh(Th, [P2,P2,P2,P2,P1,P2,P2]); // Taylor Hood
+    fespace Vh(Th, [P1,P1,P1,P1,P1,P1,P1]);   // Equal order P1
+    fespace Vh3(Th, P4);  
+
+    Vh3 sol, solv, solgradx, solgrady, solpsi; 
+
+    Vh [uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy], 
+       [wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy];
+
+    Vh [uOldx, uOldy, vOldx, vOldy, pOld, aOldx, aOldy], 
+       [uNewx, uNewy, vNewx, vNewy, pNew, aNewx, aNewy];
+
+    Vh [sUmidx, sUmidy, sVmidx, sVmidy, sPmid, sAmidx, sAmidy]; 
+
+    // Derivative of exact solution in x- and y-variables
+    func px = pi*cos(pi*x)*sin(pi*y);
+    func py = pi*sin(pi*x)*cos(pi*y);
+    func divV = (px+py);
+    func psix = pi*cos(pi*x)*sin(pi*y);
+    func psiy = pi*sin(pi*x)*cos(pi*y);
+    func divPsi = psix+psiy;
+
+    func real fp(real time) 
+    {
+        return scaleP*c0*pi*cos(pi*time)*sin(pi*x)*sin(pi*y)
+            + alpha*pi*cos(pi*time)*divV
+            + adeP2*sin(pi*time)*divV;
+    };
+
+    func real fvx(real time) 
+    {
+        return -rho*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y)
+               - lambdaLame*(-pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) + pi^2*sin(pi*time)*cos(pi*x)*cos(pi*y)) 
+               + 2.0*mu*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) 
+               - 2.0*mu*(-0.5*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) + 0.5*pi^2*sin(pi*time)*cos(pi*x)*cos(pi*y))
+               + scaleP*alpha*(sin(pi*time)*px)
+               + rhof*adeV2*pi*cos(pi*time)*sin(pi*x)*sin(pi*y);
+    };
+
+    func real fvy(real time) 
+    {
+        return -rho*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y)
+               - lambdaLame*(-pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) + pi^2*sin(pi*time)*cos(pi*x)*cos(pi*y)) 
+               + 2.0*mu*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) 
+               - 2.0*mu*(-0.5*pi^2*sin(pi*time)*sin(pi*x)*sin(pi*y) + 0.5*pi^2*sin(pi*time)*cos(pi*x)*cos(pi*y))
+               + scaleP*alpha*(sin(pi*time)*py)
+               + rhof*adeV2*pi*cos(pi*time)*sin(pi*x)*sin(pi*y);
+    };
+
+    func real fax(real time) 
+    {
+        return factor1*rhof*pi*cos(pi*time)*sin(pi*x)*sin(pi*y)
+            + factor2*rhof*sin(pi*time)*sin(pi*x)*sin(pi*y)
+            + scaleP*adeP*sin(pi*time)*px
+            + rhof*adeV*(-pi)*pi*sin(pi*time)*sin(pi*x)*sin(pi*y);
+    };
+
+    func real fay(real time) 
+    {
+        return factor1*rhof*pi*cos(pi*time)*sin(pi*x)*sin(pi*y)
+            + factor2*rhof*sin(pi*time)*sin(pi*x)*sin(pi*y)
+            + scaleP*adeP*sin(pi*time)*py
+            + rhof*adeV*(-pi)*pi*sin(pi*time)*sin(pi*x)*sin(pi*y);
+    };
+
+
+    [uOldx, uOldy, vOldx, vOldy, pOld, aOldx, aOldy] = 
+        [0, 0, pi*sin(pi*x)*sin(pi*y), pi*sin(pi*x)*sin(pi*y), 0, 0, 0];
+
+    // --- Variational Forms
+    varf vLHS([uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy], 
+              [wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy])
+        = int2d(Th)(
+            (2.0/dt)*M(uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy, wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy)
+          + K(uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy, wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy)
+        )
+        + on(1,2,3,4, uMidx=0, uMidy=0, vMidx=0, vMidy=0, pMid=0, aMidx=0, aMidy=0);
+
+    varf vRHS([uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy], 
+              [wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy])
+        = int2d(Th)(
+            (2.0/dt)*M(uOldx, uOldy, vOldx, vOldy, pOld, aOldx, aOldy, wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy)
+          + sVmidx*w2Midx + sVmidy*w2Midy + sPmid*qMid + sAmidx*zMidx + sAmidy*zMidy
+        )
+        + on(1,2,3,4, uMidx=0, uMidy=0, vMidx=0, vMidy=0, pMid=0, aMidx=0, aMidy=0);
+
+    // Initialize PETSc Matrices
+    matrix A = vLHS(Vh, Vh);  
+    Mat dPetscA(A);                     
+    set(dPetscA, sparams="-ksp_type preonly -pc_type lu -pc_factor_mat_solver_type mumps");
+
+    real[int] b(Vh.ndof);
+    real[int] solVec(Vh.ndof);
+
+    // Time-stepping loop
+    for (int step = 1; step <= N; step++) {
+        
+        real tMid = t + 0.5*dt; 
+
+        // Evaluate sources 
+        [sUmidx, sUmidy, sVmidx, sVmidy, sPmid, sAmidx, sAmidy] = 
+            [0, 0, fvx(tMid), fvy(tMid), fp(tMid), fax(tMid), fay(tMid)];              // Implicit mid point rule
+        //[sUmidx, sUmidy, sVmidx, sVmidy, sPmid, sAmidx, sAmidy] =
+           // [0, 0, 0.5*(fvx(t)+fvx(t+dt)), 0.5*(fvy(t)+fvy(t+dt)),
+           //     0.5*(fp(t)+fp(t+dt)), 0.5*(fax(t)+fax(t+dt)), 0.5*(fay(t)+fay(t+dt))]; // Crank-Nicholson
+        // Solve
+        b = vRHS(0, Vh);
+        solVec = dPetscA^-1 * b; 
+        uMidx[] = solVec; 
+        
+        [uNewx, uNewy, vNewx, vNewy, pNew, aNewx, aNewy] = 
+        [
+            2.0*uMidx - uOldx,
+            2.0*uMidy - uOldy,
+            2.0*vMidx - vOldx,
+            2.0*vMidy - vOldy,
+            2.0*pMid  - pOld,
+            2.0*aMidx - aOldx,
+            2.0*aMidy - aOldy
+        ];
+
+        t = t + dt; 
+        
+        [uOldx, uOldy, vOldx, vOldy, pOld, aOldx, aOldy] = [uNewx, uNewy, vNewx, vNewy, pNew, aNewx, aNewy];
+    }
+
+    func psittt = sin(pi*x)*sin(pi*y);
+    func solt   = sin(pi*t)*sin(pi*x)*sin(pi*y);
+    func solx   = pi*sin(pi*t)*cos(pi*x)*sin(pi*y);
+    func soly   = pi*sin(pi*t)*sin(pi*x)*cos(pi*y);
+    func soltv  = pi*cos(pi*t)*sin(pi*x)*sin(pi*y);
+    
+    solgradx = solx;
+    solgrady = soly;
+    sol      = solt;
+    solv     = soltv;
+    solpsi   = psittt;
+
+    gradL2error[n] = sqrt(int2d(Th)( (dx(uNewx) - solgradx)^2 + (dy(uNewx) - solgrady)^2 + (dx(uNewy) - solgradx)^2 + (dy(uNewy) - solgrady)^2 ));
+    cout << " L2error grad displacement " << n << " = " << gradL2error[n] << endl ;
+    
+    L2error[n]  = sqrt(int2d(Th)((uNewx - sol)^2 + (uNewy - sol)^2));
+    L2errorp[n] = sqrt(int2d(Th)((pNew - sol)^2));
+    L2errorv[n] = sqrt(int2d(Th)((vNewx - solv)^2 + (vNewy - solv)^2));
+    L2errora[n] = sqrt(int2d(Th)((aNewx - sol)^2 + (aNewy - sol)^2));
+
+};
+
+// =========================================================================
+// Errors, Convergence Rates & Output
+// =========================================================================
+cout << "\n--- Final Global Summary ---" << endl;
+cout << " L2error displacement       = " << L2error << endl ;
+cout << " L2error grad displacement  = " << gradL2error  << endl ;
+cout << " L2error velocity           = " << L2errorv  << endl ;
+cout << " L2error pressure           = " << L2errorp  << endl ;
+cout << " L2error ADE                = " << L2errora  << endl ;
+
+for (int n = 1; n < nref; n++) {
+    cout << " Convergence rate displacement      = " << log(L2error[n-1]/L2error[n])/log(Dx[n-1]/Dx[n]) << endl ;
+}
+for (int n = 1; n < nref; n++) {
+    cout << " Convergence rate grad displacement = " << log(gradL2error[n-1]/gradL2error[n])/log(Dx[n-1]/Dx[n]) << endl ;
+    EOCgradL2error[n] = log(gradL2error[n-1]/gradL2error[n])/log(Dx[n-1]/Dx[n]);
+}
+for (int n = 1; n < nref; n++) {
+    cout << " Convergence rate velocity          = " << log(L2errorv[n-1]/L2errorv[n])/log(Dx[n-1]/Dx[n]) << endl ;
+    EOCL2errorv[n] = log(L2errorv[n-1]/L2errorv[n])/log(Dx[n-1]/Dx[n]);
+}
+for (int n = 1; n < nref; n++) {
+    cout << " Convergence rate pressure          = " << log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]) << endl ;
+    EOCL2errorp[n] = log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]);
+}
+for (int n = 1; n < nref; n++) {
+    cout << " Convergence rate ADE               = " << log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]) << endl ;
+    EOCL2errora[n] = log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]);
+}
+
+// Generate dat file for plots/records
+ofstream file("output/Conv"+ nref + "_Time_"+ T  + ".dat");
+file << "gradL2\t L2Velo\t L2Pres\t L2ade" << endl;
+for (int i = 0; i < nref; ++i) {
+    file << gradL2error[i] << " & " << "\t" 
+         << EOCgradL2error[i] << " & " << "\t" 
+         << L2errorv[i] << " & " << "\t" 
+         << EOCL2errorv[i]  << " & " << "\t" 
+         << L2errorp[i]  << " & " << "\t" 
+         << EOCL2errorp[i] << " & "  << "\t" 
+         << L2errora[i] << " & " << "\t" 
+         << EOCL2errora[i] << "\n";
+}
