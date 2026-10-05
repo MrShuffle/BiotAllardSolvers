@@ -14,6 +14,6 @@ https://doi.org/10.48550/arXiv.2504.06763
 
 ---
 
-The code uses FreeFem++ (https://freefem.org/)
+The code uses FreeFem++ (https://freefem.org/) Hecht, F., 2012. New development in freefem++. J. Numer. Math. 20(3-4), 251–265.
 
 ---
