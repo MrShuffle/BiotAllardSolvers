@@ -1,0 +1,294 @@
+// Load P3 // TODO clean up script
+load "Element_P3"
+load "Element_P4"
+// Parameters
+real T = 0.1;                  // Final time
+int nref =4;                   // Number of refeinements
+real h;
+real [int] L2error ( nref );   // initialize the L2 error array
+real [int] L2errorp ( nref );  // initialize the L2 error array
+real [int] L2errorv ( nref );  // initialize the L2 error array
+real [int] L2errora ( nref );  // initialize the L2 error array
+real [int] gradL2error (nref);
+real [int] EOCL2errorp ( nref );  // initialize the L2 error array
+real [int] EOCL2errorv ( nref );  // initialize the L2 error array
+real [int] EOCL2errora ( nref );  // initialize the L2 error array
+real [int] EOCgradL2error (nref);
+real [int] Dx( nref );         // initialize the Space discretization array
+
+// Refinement loop
+for ( int n=0;n< nref ;n++) {
+
+
+// Define mesh
+int P   = 4*2^(n) ;    // space discretization
+int N   = 2*2^(n);     // Number of time steps
+mesh Th = square(P,P); // Mesh
+real dt = T/N;         // Time step size
+real t  = 0;           // Initial time
+h       = 1./P;        // Mesh size
+Dx[n]   =h;
+cout << " Time step size"  << " = " << dt <<endl ;
+
+// standard matlab jet colormap
+macro NbIso 21		   // number of isovalues for plotting (more than 20 unless FreeFem++ bug fixed)
+real em = 0.99, ep = 1.01; // under- and over-shoot for correct visualisation
+real[int] jet = [0.6667, 1.0000, 0.5625,  0.6667, 1.0000, 0.6250,  0.6667, 1.0000, 0.6875,  0.6667, 1.0000, 0.7500,  0.6667, 1.0000, 0.8125, 0.6667, 1.0000, 0.8750,
+ 0.6667, 1.0000, 0.9375, 0.6667, 1.0000, 1.0000, 0.6563, 1.0000, 1.0000, 0.6458, 1.0000, 1.0000, 0.6354, 1.0000, 1.0000, 0.6250, 1.0000, 1.0000, 0.6146, 1.0000, 1.0000,
+ 0.6042, 1.0000, 1.0000, 0.5938, 1.0000, 1.0000, 0.5833, 1.0000, 1.0000, 0.5729, 1.0000, 1.0000, 0.5625, 1.0000, 1.0000, 0.5521, 1.0000, 1.0000, 0.5417, 1.0000, 1.0000,
+ 0.5313, 1.0000, 1.0000, 0.5208, 1.0000, 1.0000, 0.5104, 1.0000, 1.0000, 0.5000, 1.0000, 1.0000, 0.4889, 0.9375, 1.0000, 0.4762, 0.8750, 1.0000, 0.4615, 0.8125, 1.0000,
+ 0.4444, 0.7500, 1.0000, 0.4242, 0.6875, 1.0000, 0.4000, 0.6250, 1.0000, 0.3704, 0.5625, 1.0000, 0.3333, 0.5000, 1.0000, 0.2963, 0.5625, 1.0000, 0.2667, 0.6250, 1.0000,
+ 0.2424, 0.6875, 1.0000, 0.2222, 0.7500, 1.0000, 0.2051, 0.8125, 1.0000, 0.1905, 0.8750, 1.0000, 0.1778, 0.9375, 1.0000, 0.1667, 1.0000, 1.0000, 0.1563, 1.0000, 1.0000,
+ 0.1458, 1.0000, 1.0000, 0.1354, 1.0000, 1.0000, 0.1250, 1.0000, 1.0000, 0.1146, 1.0000, 1.0000, 0.1042, 1.0000, 1.0000, 0.0938, 1.0000, 1.0000, 0.0833, 1.0000, 1.0000,
+ 0.0729, 1.0000, 1.0000, 0.0625, 1.0000, 1.0000, 0.0521, 1.0000, 1.0000, 0.0417, 1.0000, 1.0000, 0.0313, 1.0000, 1.0000, 0.0208, 1.0000, 1.0000, 0.0104, 1.0000, 1.0000,
+ 0, 1.0000, 1.0000, 0, 1.0000, 0.9375, 0, 1.0000, 0.8750, 0, 1.0000, 0.8125, 0, 1.0000, 0.7500, 0, 1.0000, 0.6875, 0, 1.0000, 0.6250, 0, 1.0000, 0.5625, 0, 1.0000, 0.5000]; 
+
+// Physical parameters
+real E         = 1;   
+real nu        = 0.49;                   // Poission ratio
+real alpha     = 1;                      // Biot-Willis parameter
+
+ // Artifical coupling parameters used for removing couplings
+real adeV      = 1;			
+real adeP      = 1;
+real adeV2     = 1;
+real adeP2     = 1;
+
+real Kf        = 2000000000;
+real c0        = 1;                      // 1/Kf;
+real phi       = 0.8;                    // Porosity
+real alphainf  = 1.1;                    // Infitine frequency tortuisty
+real K0        = 3e-8;                   // Static permeability
+real eta       = 1e-3;                   // Dynamic viscosity
+real rhof      = 1;//000;//000;                      // Fluid density
+real rhos      = 1;//2000;//000;                      // Solid density
+real etak      = eta/rhof;     	         // Kinectic viscosity
+real Lambda    = 2.454e-5;     		 // Tuneable geometric constant
+real F         = alphainf/phi;           // Formation factor
+real rho       = rhof*phi+(1-phi)*rhos;  // Total density
+real d         = 0.0003986498886145849;
+real c         = 0.23812635015392913;
+
+real factor1   = 1;//c*F/(etak*d);
+cout << " factor1"  << " = " << factor1 <<endl ;
+real factor2   = 1;//F/(etak*d);
+cout << " factor2"  << " = " << factor2 <<endl ;
+
+// Macros 
+macro grad(u) [dx(u), dy(u)]                               // Gradient
+macro Div(u1,u2) (dx(u1) + dy(u2))                         // Divergence
+real sqrt2=sqrt(2.);
+macro epsilon(u1,u2) [dx(u1),dy(u2),(dy(u1)+dx(u2))/sqrt2] // Strain 
+// Lame parameters
+real mu     = E/(2*(1+nu));
+real lambda = E*nu/((1+nu)*(1-2*nu));
+cout << " mu and lambda"  << " = " << mu << " and " << lambda <<endl ;
+
+// Finite element spaces
+//fespace Vh(Th, [P1,P1,P1,P1,P1,P1,P1]); // Equal order P1
+fespace Vh(Th, [P2,P2,P2,P2,P1,P2,P2]); // Taylor-Hood
+//fespace Vh(Th, [P2,P2,P2,P2,P2,P2,P2]);   // Equal order P2
+
+fespace Vh2(Th,P3);			// P3 space
+fespace Vh3(Th,P4);			// P4 space
+Vh3 sol,solv,solgradx,solgrady,solpsi;         // Spaces for reference solutions
+// Functions
+Vh [uOldx,uOldy,vOldx,vOldy,pOld, aOldx,aOldy], [uNewx,uNewy,vNewx,vNewy,pNew,aNewx,aNewy],  [wx,wy,w2x,w2y,q,zx,zy];
+Vh [uTildex,uTildey,vTildex,vTildey,pTilde,aTildex,aTildey];
+Vh [fuOldx,fuOldy,fvOldx,fvOldy,fpOld,faOldx,faOldy],[fuNewx,fuNewy,fvNewx,fvNewy,fpNew,faNewx,faNewy];
+// Replace the fuOld/fuNew lines with this:
+Vh [fMidx, fMidy, fMidvx, fMidvy, fMidp, fMidax, fMiday];
+// Derivative of exact solution in x- and y-variables
+func px = pi*cos(pi*x)*sin(pi*y);
+func py = pi*sin(pi*x)*cos(pi*y);
+func divV = (px+py);
+func psix = pi*cos(pi*x)*sin(pi*y);
+func psiy = pi*sin(pi*x)*cos(pi*y);
+func divPsi = psix+psiy;
+
+/* Source terms */
+
+func real fp(real t) // Pressure source function
+{
+	return c0*pi*cos(pi*t)*sin(pi*x)*sin(pi*y)
+		+alpha*pi*cos(pi*t)*divV
+		+adeP2*sin(pi*t)*divV;
+};
+
+func real fux(real t) // Displacement source function
+{
+	return alpha*t*y*(1-y)-2*t*x*(y-y*y)+x*y*(1-x)*(1-y);
+};
+func real fuy(real t) // Displacement source function
+{
+	return alpha*t*x*(1-x)-2*t*y*(x-x*x)+ x*y*(1-x)*(1-y);
+};
+func real fvx(real t) // Velocity source function x-direction
+{
+	return -rho*pi*pi*sin(pi*t)*sin(pi*x)*sin(pi*y)-lambda*(-pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) + pi^(2)*sin(pi*t)*cos(pi*x)*cos(pi*y)) + 2.0*mu*pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) 
+	       - 2*mu*(-0.5*pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) + 0.5*pi^(2)*sin(pi*t)*cos(pi*x)*cos(pi*y))+alpha*(sin(pi*t)*px)+rhof*adeV2*pi*cos(pi*t)*sin(pi*x)*sin(pi*y);
+	
+};
+func real fvy(real t) // Velocity source function y-direction
+{
+	return -rho*pi*pi*sin(pi*t)*sin(pi*x)*sin(pi*y)-lambda*(-pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) + pi^(2)*sin(pi*t)*cos(pi*x)*cos(pi*y)) + 2.0*mu*pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) 
+	       - 2*mu*(-0.5*pi^(2)*sin(pi*t)*sin(pi*x)*sin(pi*y) + 0.5*pi^(2)*sin(pi*t)*cos(pi*x)*cos(pi*y))+alpha*(sin(pi*t)*py)+rhof*adeV2*pi*cos(pi*t)*sin(pi*x)*sin(pi*y);
+	     
+};
+func real fax(real t) // ADE source function
+{
+	return factor1*rhof*pi*cos(pi*t)*sin(pi*x)*sin(pi*y)
+		+factor2*rhof*sin(pi*t)*sin(pi*x)*sin(pi*y)
+		+adeP*sin(pi*t)*px
+		+rhof*adeV*(-pi)*pi*sin(pi*t)*sin(pi*x)*sin(pi*y);
+};
+func real fay(real t) // ADE source function
+{
+	return  factor1*rhof*pi*cos(pi*t)*sin(pi*x)*sin(pi*y)
+		+factor2*rhof*sin(pi*t)*sin(pi*x)*sin(pi*y)
+		+adeP*sin(pi*t)*py
+		+rhof*adeV*(-pi)*pi*sin(pi*t)*sin(pi*x)*sin(pi*y);
+};
+func g = 0; // Boundary condition
+
+// Inital functions
+[fuOldx,fuOldy,fvOldx,fvOldy,fpOld,faOldx,faOldy] =[0,0,fvx(0),fvy(0),fp(0),fax(0),fay(0)];
+[fuNewx,fuNewy,fvNewx,fvNewy,fpNew,faNewx,faNewy]=[0,0,fvx(dt),fvy(dt),fp(dt),fax(dt),fay(dt)];
+// Initial conditions
+[uOldx,uOldy,vOldx,vOldy,pOld, aOldx,aOldy] = [0, 0, pi*sin(pi*x)*sin(pi*y), pi*sin(pi*x)*sin(pi*y), 0, 0, 0];
+[uTildex,uTildey,vTildex,vTildey,pTilde,aTildex,aTildey]= [uOldx,uOldy,vOldx,vOldy,pOld, aOldx,aOldy];
+
+
+// Problem
+problem allard([uNewx,uNewy,vNewx,vNewy,pNew,aNewx,aNewy], [wx,wy,w2x,w2y,q,zx,zy])
+    = int2d(Th)(uNewx*wx/dt) -int2d(Th)(uOldx*wx/dt) // Velocity
+    + int2d(Th)(uNewy*wy/dt) -int2d(Th)(uOldy*wy/dt)
+    -int2d(Th)(0.5*vNewx*wx)-int2d(Th)(0.5*vOldx*wx)
+    -int2d(Th)(0.5*vNewy*wy)-int2d(Th)(0.5*vOldy*wy)
+    +int2d(Th)(rho*vNewx*w2x/dt) // Mechanics
+    -int2d(Th)(rho*vOldx*w2x/dt)
+     +int2d(Th)(rho*vNewy*w2y/dt) 
+    -int2d(Th)(rho*vOldy*w2y/dt)
+    +int2d(Th)(0.5*lambda*Div(uNewx,uNewy)*Div(w2x,w2y))
+    +int2d(Th)(0.5*lambda*Div(uOldx,uOldy)*Div(w2x,w2y))
+    +int2d(Th)(0.5*2.*mu*(epsilon(uNewx,uNewy)'*epsilon(w2x,w2y)))
+    +int2d(Th)(0.5*2.*mu*(epsilon(uOldx,uOldy)'*epsilon(w2x,w2y)))
+    -int2d(Th)(0.5*alpha*Div(w2x,w2y)*pNew) // Biot coupling
+    -int2d(Th)(0.5*alpha*Div(w2x,w2y)*pOld)
+    +int2d(Th)(rhof*adeV2*aNewx*w2x/dt)-int2d(Th)(rhof*adeV*aOldx*w2x/dt) // Velocity-ADE
+    +int2d(Th)(rhof*adeV2*aNewy*w2y/dt)-int2d(Th)(rhof*adeV*aOldy*w2y/dt)
+    -int2d(Th)(0.5*fvNewx*w2x)-int2d(Th)(0.5*fvOldx*w2x)
+    -int2d(Th)(0.5*fvNewy*w2y)-int2d(Th)(0.5*fvOldy*w2y)
+    +int2d(Th)(c0*pNew*q/dt)-int2d(Th)(c0*pOld*q/dt) // Flow
+    +int2d(Th)(0.5*alpha*Div(vNewx,vNewy)*q) // Biot coupling
+    +int2d(Th)(0.5*alpha*Div(vOldx,vOldy)*q)
+    +int2d(Th)(adeP2*0.5*Div(aNewx,aNewy)*q) // Pressure-ADE
+    +int2d(Th)(adeP2*0.5*Div(aOldx,aOldy)*q)
+    -int2d(Th)(0.5*fpNew*q)-int2d(Th)(0.5*fpOld*q)
+    +int2d(Th)(factor1*rhof*aNewx*zx/dt)-int2d(Th)(factor1*rhof*aOldx*zx/dt) // Auxilliary equation
+    +int2d(Th)(factor1*rhof*aNewy*zy/dt)-int2d(Th)(factor1*rhof*aOldy*zy/dt)
+    +int2d(Th)(factor2*rhof*0.5*aNewx*zx)+int2d(Th)(factor2*rhof*0.5*aOldx*zx) 
+    +int2d(Th)(factor2*rhof*0.5*aNewy*zy)+int2d(Th)(factor2*rhof*0.5*aOldy*zy) 
+    -int2d(Th)(adeP*0.5*pNew*Div(zx,zy)) // ADE-pressure
+    -int2d(Th)(adeP*0.5*pOld*Div(zx,zy))
+    +int2d(Th)(rhof*adeV*vNewx*zx/dt) // ADE-velocity
+    -int2d(Th)(rhof*adeV*vOldx*zx/dt)
+     +int2d(Th)(rhof*adeV*vNewy*zy/dt) 
+    -int2d(Th)(rhof*adeV*vOldy*zy/dt)
+    -int2d(Th)(0.5*faNewx*zx)-int2d(Th)(0.5*faOldx*zx)
+    -int2d(Th)(0.5*faNewy*zy)-int2d(Th)(0.5*faOldy*zy)
+    + on(1,2,3,4, uNewx=0)
+    + on(1,2,3,4, uNewy=0)
+    + on(1,2,3,4, vNewx=0)
+    + on(1,2,3,4, vNewy=0)
+    + on(1,2,3,4, pNew=0)
+    + on(1,2,3,4, aNewx=0)
+    + on(1,2,3,4, aNewy=0);
+
+//matrix A = allard.A;//set(solver=GMRES);
+// Time-stepping
+for (int n = 0; n < N; n++) {
+    [fuOldx,fuOldy,fvOldx,fvOldy,fpOld,faOldx,faOldy] =[0,0,fvx(t),fvy(t),fp(t),fax(t),fay(t)];
+
+    t=t+dt; // Update time step
+    [fuNewx,fuNewy,fvNewx,fvNewy,fpNew,faNewx,faNewy]=[0,0,fvx(t),fvy(t),fp(t),fax(t),fay(t)];
+    allard;
+    [uOldx,uOldy,vOldx,vOldy,pOld, aOldx,aOldy] = [uNewx,uNewy,vNewx,vNewy,pNew,aNewx,aNewy];
+    [uTildex,uTildey,vTildex,vTildey,pTilde,aTildex,aTildey] = [uNewx,uNewy,vNewx,vNewy,pNew,aNewx,aNewy];
+    //real[int]isovalues=em*uNew[].min:(ep*uNew[].max-em*uNew[].min)/(NbIso-1):ep*uNew[].max;	// isovalues from minimal to maximal value
+    //plot([uNewx,uNewy], wait=1, value=true,fill=1,hsv=jet, cmm="Numerical approximation diplacement");
+    //real[int]isovalues2=em*vNew[].min:(ep*vNew[].max-em*vNew[].min)/(NbIso-1):ep*vNew[].max;	// isovalues from minimal to maximal value
+    //plot([vNewx,vNewy], wait=1, value=true,fill=1,hsv=jet, cmm="Numerical approximation velocity");
+    //plot(pNew, wait=1, value=true,hsv=jet, cmm="Numerical approximation pressure");
+    //plot([aNewx,aNewy], wait=1, value=true,hsv=jet, cmm="Numerical approximation auxilliary variable");
+}
+
+func psittt = sin(pi*x)*sin(pi*y);
+func solt =  sin(pi*t)*sin(pi*x)*sin(pi*y);
+func solx = pi*sin(pi*t)*cos(pi*x)*sin(pi*y);
+func soly = pi*sin(pi*t)*sin(pi*x)*cos(pi*y);
+func soltv = pi*cos(pi*t)*sin(pi*x)*sin(pi*y);
+solgradx = solx;
+solgrady = soly;
+gradL2error[n] = sqrt(int2d(Th)(((dx(uNewx) - solgradx)^2+(dy(uNewx) - solgrady)^2+(dx(uNewy) - solgradx)^2+(dy(uNewy) - solgrady)^2)));
+cout << " L2error grad displacement" << n << " = " << gradL2error <<endl ;
+sol = solt;
+solv = soltv;
+solpsi = psittt;
+L2error[n] = sqrt(int2d(Th)((uNewx - sol)^2+(uNewy - sol)^2));
+L2errorp[n] = sqrt(int2d(Th)((pNew - sol)^2));
+L2errorv[n] = sqrt(int2d(Th)((vNewx - solv)^2+(vNewy - solv)^2));
+L2errora[n] = sqrt(int2d(Th)((aNewx - sol)^2+(aNewy - sol)^2));
+//plot(pNew, wait=1, value=true,hsv=jet, cmm="Numerical approximation pressure");
+//plot([aNewx,aNewy], wait=1, value=true,hsv=jet, cmm="Numerical approximation auxilliary variable");
+//plot([solpsi,solpsi], wait=1, value=true,hsv=jet, cmm="Solution auxilliary variable");
+};
+//for( int n =0;n< nref ;n ++){
+//cout << " L2error displacement" << n << " = " << L2error [n] <<endl ;
+//}
+cout << " L2error displacement"  << " = " << L2error <<endl ;
+//for( int n =0;n< nref ;n ++){
+//cout << " L2error grad displacement" << n << " = " << gradL2error [n] <<endl ;
+//}
+cout << " L2error grad displacement"  << " = " << gradL2error  <<endl ;
+//for( int n =0;n< nref ;n ++){
+//cout << " L2error velocity" << n << " = " << L2errorv [n] <<endl ;
+//}
+cout << " L2error velocity" << " = " << L2errorv  <<endl ;
+//for( int n =0;n< nref ;n ++){
+//cout << " L2error pressure" << n << " = " << L2errorp [n] <<endl ;
+//}
+cout << " L2error pressure"  << " = " << L2errorp  <<endl ;
+//for( int n =0;n< nref ;n ++){
+//cout << " L2error ADE" << n << " = " << L2errora [n] <<endl ;
+//}
+cout << " L2error ADE"  << " = " << L2errora  <<endl ;
+for ( int n =1;n< nref ;n ++){
+cout <<" convergence rate displacement= " << log(L2error[n-1]/L2error[n])/log(Dx[n-1]/Dx[n]) <<endl ;
+
+}
+for ( int n =1;n< nref ;n ++){
+cout <<" convergence rate grad displacement= " << log(gradL2error[n-1]/gradL2error[n])/log(Dx[n-1]/Dx[n]) <<endl ;
+EOCgradL2error[n] = log(gradL2error[n-1]/gradL2error[n])/log(Dx[n-1]/Dx[n]);
+}
+for ( int n =1;n< nref ;n ++){
+cout <<" convergence rate velocity= " << log(L2errorv[n-1]/L2errorv[n])/log(Dx[n-1]/Dx[n]) <<endl ;
+EOCL2errorv[n] = log(L2errorv[n-1]/L2errorv[n])/log(Dx[n-1]/Dx[n]);
+}
+for ( int n =1;n< nref ;n ++){
+cout <<" convergence rate pressure = " << log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]) <<endl ;
+EOCL2errorp[n] = log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]);
+}
+for ( int n =1;n< nref ;n ++){
+cout <<" convergence rate ADE = " << log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]) <<endl ;
+EOCL2errora[n] = log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]);
+}
+ofstream file("output/ConvP1SmallRefNu02_"+ nref + "_Time_"+ T  + ".dat");
+// Write the header
+file << "gradL2\t L2Velo\t L2Pres\t L2ade" << endl;
+for (int i =0; i< nref; ++i) {
+	file << gradL2error[i] << " & " << "\t" << EOCgradL2error[i] << " & " << "\t" << L2errorv[i] << " & " << "\t" << EOCL2errorv[i]  << " & " << "\t" << L2errorp[i]  << " & " << "\t" << EOCL2errorp[i] << " & "  << "\t" << L2errora[i] << " & " << "\t" << EOCL2errora[i] << "\n";
+}
+
+//file << gradL2error << " " << L2errorv << " " << L2errorp << " " << L2errora;
+
