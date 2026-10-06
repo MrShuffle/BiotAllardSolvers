@@ -1,4 +1,4 @@
-// Load PETSc and Elements
+// Biot Allard ADE N=1: Manufactured solution test case 2
 load "PETSc"
 load "Element_P3"
 load "Element_P4"
