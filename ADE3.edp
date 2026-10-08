@@ -183,7 +183,7 @@ for (int n = 0; n < nref; n++) {
             (2.0/dt)*M(uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy, wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy)
           + K(uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy, wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy)
         )
-        + on(1,2,3,4, uMidx=0, uMidy=0, vMidx=0, vMidy=0);
+        + on(1,2,3,4, uMidx=0, uMidy=0, vMidx=0, vMidy=0, pMid=0);
 
     varf vRHS([uMidx, uMidy, vMidx, vMidy, pMid, aMidx, aMidy], 
               [wMidx, wMidy, w2Midx, w2Midy, qMid, zMidx, zMidy])
