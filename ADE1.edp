@@ -3,6 +3,9 @@ load "PETSc"
 load "Element_P3"
 load "Element_P4"
 
+if (mpirank == 0) exec("mkdir -p outputExample1");
+mpiBarrier(mpiCommWorld);
+
 real T   = 0.1;                // Final time
 int nref = 4;                  // Number of refinements 
 real h;
@@ -18,7 +21,7 @@ real[int] EOCL2errorv(nref);
 real[int] EOCL2errora(nref);
 real[int] EOCgradL2error(nref);
 real[int] Dx(nref);            
-EOCL2errorp = 0; EOCL2errorv = 0; EOCL2errora = 0; EOCgradL2error = 0; // No EOC on the first level
+EOCL2errorp = 0; EOCL2errorv = 0; EOCL2errora = 0; EOCgradL2error = 0; 
 
 // =========================================================================
 // Material parameters 
@@ -31,7 +34,6 @@ real phi        = 0.8;                       // Porosity
 real alpha      = 1.0;                       // Biot-Willis parameter
 real c0         = 1.0;                       // Specific storage coefficient
 
-// Derived physical parameters
 real rho        = rhos*(1.0-phi) + rhof*phi; // Total density
 
 // Auxiliary ADE equation factors 
@@ -273,7 +275,7 @@ for (int n = 1; n < nref; n++) {
 }
 
 // Generate dat file for plots/records
-ofstream file("output/Conv"+ nref + "_Time_"+ T  + ".dat");
+ofstream file("outputExample1/Conv"+ nref + "_Time_"+ T  + ".dat");
 file << "gradL2\t L2Velo\t L2Pres\t L2ade" << endl;
 for (int i = 0; i < nref; ++i) {
     file << gradL2error[i] << " & " << "\t" 
