@@ -4,6 +4,9 @@ load "Element_P3"
 load "Element_P4"
 
 
+if (mpirank == 0) exec("mkdir -p outputExample3");
+mpiBarrier(mpiCommWorld);
+
 real T   = 0.2;                // Final time
 int nref = 4;                  // Number of refinements
 real h;
