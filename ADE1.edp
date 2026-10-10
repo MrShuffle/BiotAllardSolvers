@@ -18,7 +18,7 @@ real[int] EOCL2errorv(nref);
 real[int] EOCL2errora(nref);
 real[int] EOCgradL2error(nref);
 real[int] Dx(nref);            
-EOCL2errorp = 0; EOCL2errorv = 0; EOCL2errora = 0; EOCgradL2error = 0; // No EOC on the first level
+EOCL2errorp = 0; EOCL2errorv = 0; EOCL2errora = 0; EOCgradL2error = 0; 
 
 // =========================================================================
 // Material parameters 
@@ -31,7 +31,6 @@ real phi        = 0.8;                       // Porosity
 real alpha      = 1.0;                       // Biot-Willis parameter
 real c0         = 1.0;                       // Specific storage coefficient
 
-// Derived physical parameters
 real rho        = rhos*(1.0-phi) + rhof*phi; // Total density
 
 // Auxiliary ADE equation factors 
