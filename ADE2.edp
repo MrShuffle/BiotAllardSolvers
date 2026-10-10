@@ -34,7 +34,6 @@ real formationF = 2.5/phi;                   // Formation factor (F)
 real c1ade      = 2.0953315e-06;             // ADE Parameter c1
 real d1ade      = 1.66666364e-06;            // ADE Parameter d1
 
-// Derived physical parameters
 real rho        = rhos*(1.0-phi) + rhof*phi; // Total density
 real nuk        = eta/rhof;                  // Kinematic viscosity (\eta_k)
 
