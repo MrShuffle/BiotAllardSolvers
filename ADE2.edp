@@ -279,7 +279,7 @@ for (int n = 1; n < nref; n++) {
 }
 
 // Generate dat file for plots/records
-ofstream file("output/Conv"+ nref + "_Time_"+ T  + ".dat");
+ofstream file("outputExample2/Conv"+ nref + "_Time_"+ T  + ".dat");
 file << "gradL2\t L2Velo\t L2Pres\t L2ade" << endl;
 for (int i = 0; i < nref; ++i) {
     file << gradL2error[i] << " & " << "\t" 
