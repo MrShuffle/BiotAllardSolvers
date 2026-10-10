@@ -12,14 +12,12 @@ real h;
 real[int] L2error(nref);  
 real[int] L2errorp(nref); 
 real[int] L2errorv(nref); 
-real[int] L2errora(nref); 
 real[int] gradL2error(nref);
 real[int] EOCL2errorp(nref);
 real[int] EOCL2errorv(nref);
-real[int] EOCL2errora(nref);
 real[int] EOCgradL2error(nref);
 real[int] Dx(nref);            
-EOCL2errorp = 0; EOCL2errorv = 0; EOCL2errora = 0; EOCgradL2error = 0; 
+EOCL2errorp = 0; EOCL2errorv = 0; EOCgradL2error = 0; 
 
 // =========================================================================
 // Material parameters 
@@ -278,7 +276,7 @@ for (int n = 1; n < nref; n++) {
 
 // Generate dat file for plots/records
 ofstream file("output/ConvKernelP1_"+ nref + "_Time_"+ T  + ".dat");
-file << "gradL2\t L2Velo\t L2Pres << endl;
+file << "gradL2\t L2Velo\t L2Pres" << endl;
 for (int i = 0; i < nref; ++i) {
     file << gradL2error[i] << " & " << "\t" 
          << EOCgradL2error[i] << " & " << "\t" 
