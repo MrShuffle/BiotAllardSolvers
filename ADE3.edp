@@ -32,7 +32,6 @@ real phi        = 0.8;                       // Porosity
 real alpha      = 1.0;                       // Biot-Willis parameter
 real c0         = 1.0;                       // Specific storage coefficient
 
-// Derived physical parameters
 real rho        = rhos*(1.0-phi) + rhof*phi; // Total density
 
 // Auxiliary ADE equation factors 
@@ -232,8 +231,6 @@ for (int n = 0; n < nref; n++) {
         [uOldx, uOldy, vOldx, vOldy, pOld, aOldx, aOldy] = [uNewx, uNewy, vNewx, vNewy, pNew, aNewx, aNewy];
     }
 
-    func compXPsi = -((sin(pi*t) - pi*cos(pi*t) + pi*exp(-t))/(1. + pi*pi))*(pi*cos(pi*x)*sin(pi*y) - (pi*pi)*sin(pi*x)*sin(pi*y));
-    func compYPsi = -((sin(pi*t) - pi*cos(pi*t) + pi*exp(-t))/(1. + pi*pi))*(pi*sin(pi*x)*cos(pi*y) - (pi*pi)*sin(pi*x)*sin(pi*y));
     func solt     = sin(pi*t)*sin(pi*x)*sin(pi*y);
     func solx     = pi*sin(pi*t)*cos(pi*x)*sin(pi*y);
     func soly     = pi*sin(pi*t)*sin(pi*x)*cos(pi*y);
@@ -243,8 +240,6 @@ for (int n = 0; n < nref; n++) {
     solgrady = soly;
     sol      = solt;
     solv     = soltv;
-    solpsix  = compXPsi;
-    solpsiy  = compYPsi;
 
     gradL2error[n] = sqrt(int2d(Th)( (dx(uNewx) - solgradx)^2 + (dy(uNewx) - solgrady)^2 + (dx(uNewy) - solgradx)^2 + (dy(uNewy) - solgrady)^2 ));
     cout << " L2error grad displacement " << n << " = " << gradL2error[n] << endl ;
@@ -252,7 +247,6 @@ for (int n = 0; n < nref; n++) {
     L2error[n]  = sqrt(int2d(Th)((uNewx - sol)^2 + (uNewy - sol)^2));
     L2errorp[n] = sqrt(int2d(Th)((pNew - sol)^2));
     L2errorv[n] = sqrt(int2d(Th)((vNewx - solv)^2 + (vNewy - solv)^2));
-    L2errora[n] = sqrt(int2d(Th)((aNewx - solpsix)^2 + (aNewy - solpsiy)^2));
 
 };
 
@@ -264,7 +258,6 @@ cout << " L2error displacement       = " << L2error << endl ;
 cout << " L2error grad displacement  = " << gradL2error  << endl ;
 cout << " L2error velocity           = " << L2errorv  << endl ;
 cout << " L2error pressure           = " << L2errorp  << endl ;
-cout << " L2error ADE                = " << L2errora  << endl ;
 
 for (int n = 1; n < nref; n++) {
     cout << " Convergence rate displacement      = " << log(L2error[n-1]/L2error[n])/log(Dx[n-1]/Dx[n]) << endl ;
@@ -281,14 +274,11 @@ for (int n = 1; n < nref; n++) {
     cout << " Convergence rate pressure          = " << log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]) << endl ;
     EOCL2errorp[n] = log(L2errorp[n-1]/L2errorp[n])/log(Dx[n-1]/Dx[n]);
 }
-for (int n = 1; n < nref; n++) {
-    cout << " Convergence rate ADE               = " << log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]) << endl ;
-    EOCL2errora[n] = log(L2errora[n-1]/L2errora[n])/log(Dx[n-1]/Dx[n]);
-}
+
 
 // Generate dat file for plots/records
 ofstream file("output/ConvKernelP1_"+ nref + "_Time_"+ T  + ".dat");
-file << "gradL2\t L2Velo\t L2Pres\t L2ade" << endl;
+file << "gradL2\t L2Velo\t L2Pres << endl;
 for (int i = 0; i < nref; ++i) {
     file << gradL2error[i] << " & " << "\t" 
          << EOCgradL2error[i] << " & " << "\t" 
@@ -296,6 +286,5 @@ for (int i = 0; i < nref; ++i) {
          << EOCL2errorv[i]  << " & " << "\t" 
          << L2errorp[i]  << " & " << "\t" 
          << EOCL2errorp[i] << " & "  << "\t" 
-         << L2errora[i] << " & " << "\t" 
-         << EOCL2errora[i] << "\n";
+         ;
 }
