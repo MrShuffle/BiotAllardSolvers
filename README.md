@@ -6,6 +6,10 @@ Stokke, J. S., Bause, M., Radu, F. A., 2026. Convergence of a continuous Galerki
 
 https://doi.org/10.48550/arXiv.2504.06763 New version to appear.
 
+Jakobsen, M., Stokke, J.S., Kumar, K., Radu, F.A., 2026. Frequency domain Biot–Allard equations for isotropic and anisotropic poroelastic media: Two-field formulations and iterative splitting. Comput Geosci 30, 99. 
+
+https://doi.org/10.1007/s10596-026-10490-x 
+
 
 ---
 
