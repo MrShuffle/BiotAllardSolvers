@@ -1,0 +1,288 @@
+// SPE11b, 2D Biot-JKD in the frequency domain
+load "gmsh"
+load "medit"
+load "msh3"
+load "iovtk"
+verbosity = 0;
+string tag = "_spe11b";
+
+meshS Th = gmshloadS("spe11b.msh");
+plot(Th);
+// Max mesh size near (x0, y0), labeled hmax
+real x0    = 4104;
+real y0    = 664;
+real eps  = 1e-10;
+fespace Vh0q(Th, P0);
+Vh0q h     = hTriangle;
+real hmax = 0;
+int nb    = 0;
+for (int k = 0; k < Th.nt; k++) {
+    real x1  = Th[k][0].x, y1 = Th[k][0].y;
+    real x2  = Th[k][1].x, y2 = Th[k][1].y;
+    real x3  = Th[k][2].x, y3 = Th[k][2].y;
+    real det = (x2 - x1)*(y3 - y1) - (x3 - x1)*(y2 - y1);
+    real l2  = ((x0 - x1)*(y3 - y1) - (x3 - x1)*(y0 - y1)) / det;
+    real l3  = ((x2 - x1)*(y0 - y1) - (x0 - x1)*(y2 - y1)) / det;
+    real l1  = 1 - l2 - l3;
+    if (min(l1, min(l2, l3)) > -eps) {
+        hmax = max(hmax, h[][k]);
+        nb++;
+    }
+}
+real distribution = 1.5*hmax;
+real w            = (2*pi*distribution);
+// Frequencies [Hz] and Ricker wavelet values in the frequency domain
+real[int] A2(6);
+complex[int] B2(6);
+A2 = [-5, 2, 7, 20, 30, 50];
+B2 = [0.105016332095494 - 0.821409152270607i,
+      0.118194891257643 + 0.0762214456021446i,
+      -0.666979250979181 + 1.37457709566949i,
+      4.54798435156748 - 2.50044866014367i,
+      -2.43765347925807 + 2.28883419314118i,
+      -0.0524986911748207 + 0.160830597299232i];
+
+int ifrStart = 4;               // first frequency index to run (0 = all)
+
+// --- Material parameters (facies 1-6, default for the rest)
+func real permeability(int region) {
+    if (region == 1) return 1e-16;
+    if (region == 2) return 1e-13;
+    if (region == 3) return 2e-13;
+    if (region == 4) return 5e-13;
+    if (region == 5) return 1e-12;
+    if (region == 6) return 2e-12;
+    return 5e-12;
+}
+func real porosity(int region) {
+    if (region == 1) return 0.1;
+    if (region == 2) return 0.2;
+    if (region == 3) return 0.2;
+    if (region == 4) return 0.2;
+    if (region == 5) return 0.25;
+    if (region == 6) return 0.35;
+    return 0.1;
+}
+func real soliddensity(int region) {
+    if (region == 1) return 2600;   // Skifer
+    if (region == 2) return 2500;   // Siltstein
+    if (region == 3) return 2450;   // Finkornet sandstein
+    if (region == 4) return 2400;   // Sandstein
+    if (region == 5) return 2350;   // Porøs sandstein
+    if (region == 6) return 2700;   // Kalkstein
+    return 2650;
+}
+func real Ksolid(int region) {
+    if (region == 1) return 15e9;
+    if (region == 2) return 20e9;
+    if (region == 3) return 25e9;
+    if (region == 4) return 30e9;
+    if (region == 5) return 35e9;
+    if (region == 6) return 60e9;
+    return 50e9;
+}
+func real Kdrained(int region) {
+    if (region == 1) return 1.39e+10;
+    if (region == 2) return 1.60e+10;
+    if (region == 3) return 1.98e+10;
+    if (region == 4) return 2.45e+10;
+    if (region == 5) return 2.71e+10;
+    if (region == 6) return 3.96e+10;
+    return 5e10;
+}
+func real PwaveVelocity(int region) {
+    if (region == 1) return 2296.78;
+    if (region == 2) return 2684.18;
+    if (region == 3) return 3065.43;
+    if (region == 4) return 3302.61;
+    if (region == 5) return 3660.25;
+    if (region == 6) return 4375.87;
+    return 3000;
+}
+func real SwaveVelocity(int region) {
+    if (region == 1) return 1454.22;
+    if (region == 2) return 1700.27;
+    if (region == 3) return 1938.88;
+    if (region == 4) return 2087.70;
+    if (region == 5) return 2316.56;
+    if (region == 6) return 2767.30;
+    return 1500;
+}
+
+real eta  = 1e-3;
+real rhof = 1e3;
+real Kf   = 2.2e9;
+real ainf = 1.5;
+
+fespace Vh0(Th, P0);
+Vh0 Vp     = PwaveVelocity(region);
+Vh0 Vs     = SwaveVelocity(region);
+Vh0 k      = permeability(region);
+Vh0 rhos   = soliddensity(region);
+Vh0 phi    = porosity(region);
+Vh0 Kd     = Kdrained(region);
+Vh0 Ks     = Ksolid(region);
+Vh0 alpha  = 1-Kd/Ks;
+Vh0 c0     = (alpha-phi)/Ks + phi/Kf;
+Vh0 rho    = rhos*phi + (1-phi)*rhof;    
+Vh0 mu     = rho*Vs^2;
+Vh0 lambda = rho*Vp^2 - 2*mu;
+Vh0 Lambda = sqrt(ainf*k*8/phi);         // Carcione's formula (was the constant 8.603e-6)
+Vh0 L      = 0.95*alpha*alpha/c0;        // stabilization parameter
+
+plot(k,     wait=false, fill=true, value=true, nbiso=32);
+plot(rhos,  wait=false, fill=true, value=true, nbiso=32);
+plot(phi,   wait=false, fill=true, value=true, nbiso=32);
+plot(alpha, wait=false, fill=true, value=true, nbiso=32);
+
+// --- Absorbing layer 
+real Lx    = 8400;
+real Ly    = 1200;
+real dPMLx = 3000;
+real dPMLy = 200;
+real m     = 2;
+
+real om     = 2.0*pi*A2[0];
+real om2    = om^2;
+complex val = B2[0];
+
+real rMax  = 1e2;                
+real omMin = 2*pi*2.;           
+real aCFS  = 2*pi*5.;           
+real dMax  = rMax*sqrt(aCFS^2 + omMin^2);   
+
+func dX = (x <= dPMLx) ? dMax*((dPMLx-x)/dPMLx)^m
+        : ((x >= Lx-dPMLx) ? dMax*((x-Lx+dPMLx)/dPMLx)^m : 0.);
+func dY = (y <= dPMLy) ? dMax*((dPMLy-y)/dPMLy)^m
+        : ((y >= Ly-dPMLy) ? dMax*((y-Ly+dPMLy)/dPMLy)^m : 0.);
+func detJx = 1 + dX/(aCFS + 1i*om);
+func detJy = 1 + dY/(aCFS + 1i*om);
+func SX    = 1/detJx;
+func SY    = 1/detJy;
+func detJ  = detJx*detJy;
+
+macro divPML(u1,u2) (SX*dx(u1) + SY*dy(u2))                               // Divergence
+macro dotGradPML(p,q) (SX*dx(p)*SX*dx(q) + SY*dy(p)*SY*dy(q))             // Gradient
+macro dotEpsPML(u1,u2,v1,v2) (SX*dx(u1)*SX*dx(v1) + SY*dy(u2)*SY*dy(v2)
+    + (SY*dy(u1)+SX*dx(u2))*(SY*dy(v1)+SX*dx(v2))/2.)                     // Strain
+
+// --- Finite element spaces
+fespace Vh2u(Th, [P2,P2]);
+fespace Vh2p(Th, [P1]);
+Vh2u<complex> [ux,uy], [vx,vy], [uxk,uyk];
+Vh2p<complex> pf, pfk, qf;
+fespace VhPet(Th, P1);
+
+// --- Source
+
+real sigma = 50;
+func real gaussian3(real t) {return (1./w)*exp(-((x - x0)^2 + (y - y0)^2)/(2*distribution ^2));}; 
+// Biot-JKD Permeability
+func complex JKD(real oma) {
+    return k/(sqrt(1-(4*1i*square(ainf*k)*rhof*oma)/(square(Lambda*phi)*eta))-(1i*ainf*k*rhof*oma)/(eta*phi));
+};
+Vh0<complex> Bmob = JKD(om)/eta;
+
+// --- Variational forms
+problem mechanics([ux,uy],[vx,vy]) = int2d(Th)(2.*mu*detJ*dotEpsPML(ux,uy,vx,vy))
+    +int2d(Th)(lambda*detJ*divPML(ux,uy)*divPML(vx,vy))
+    +int2d(Th)(L*detJ*divPML(ux,uy)*divPML(vx,vy))
+    -int2d(Th)(rho*om2*detJ*(ux*vx+uy*vy))
+    +int2d(Th)(1i*om*om2*rhof^2*Bmob*detJ*(ux*vx+uy*vy))
+    -int2d(Th)(L*detJ*divPML(uxk,uyk)*divPML(vx,vy))
+    -int2d(Th)(alpha*detJ*pfk*divPML(vx,vy))
+    +int2d(Th)(1i*om*rhof*Bmob*detJ*pfk*divPML(vx,vy))
+    -int2d(Th,qforder=7)(1i*om*val*gaussian3(0)*(vx+vy)*detJ)   
+    +on(1,2,3,4,ux=0,uy=0);
+
+problem flow(pf,qf) = int2d(Th)(c0*pf*qf*detJ)
+    -int2d(Th)(1i/om*Bmob*detJ*dotGradPML(pf,qf))
+    -int2d(Th)(1i*om*rhof*Bmob*detJ*divPML(ux,uy)*qf)
+    +int2d(Th)(alpha*detJ*divPML(ux,uy)*qf)
+    +on(1,2,3,4,pf=0);
+
+real tol          = 1e-6;
+complex error     = 1;
+complex error2    = 1;
+int maxIter       = 1000;
+bool stopDiverged = true;   // stop runs whose displacement norm grows by 1e6
+
+int nFreq = A2.n;
+int[int] iterTable(nFreq);  // negative = not converged
+iterTable = 0;
+string iterFile = "iterations" + tag + ".txt";
+{
+    ofstream fout(iterFile);
+    fout << "# L = 0.95*alpha^2/c0" << endl;
+    fout << "# tol = " << tol << ", maxIter = " << maxIter << endl;
+    fout << "# status: 1 = converged, 0 = maxIter reached, -1 = stopped as diverging" << endl;
+    fout << "# freqHz iterations status errU errP" << endl;
+}
+
+// --- Loop over frequencies
+for (int ifreq = ifrStart; ifreq < nFreq; ++ifreq) {
+    real tFreq = clock();
+    om   = 2.0*pi*A2[ifreq];
+    om2  = om^2;
+    val  = B2[ifreq];
+    Bmob = JKD(om)/eta;
+
+    [uxk,uyk] = [0,0];
+    pfk       = 0;
+    error     = 1;
+    error2    = 1;
+    int iter    = 0;
+    int status  = 0;        // 1 converged, 0 maxIter, -1 diverging
+    real normU1 = 0;
+
+    cout << "==== frequency " << A2[ifreq] << " Hz, val = " << val << " ====" << endl;
+
+    while ((abs(real(error)) > tol || abs(real(error2)) > tol) && (iter < maxIter)) {
+        mechanics;
+        flow;
+
+        error  = sqrt(int2d(Th)((abs(ux-uxk))^2+(abs(uy-uyk))^2))/ sqrt(int2d(Th)(abs(ux)^2+abs(uy)^2));
+        error2 = sqrt(int2d(Th)((abs(pf-pfk))^2))/ sqrt(int2d(Th)((abs(pf))^2));
+        iter++;
+        cout << "Iteration " << iter << ", error = " << error << " error pressure " << error2 << endl;
+
+        if (stopDiverged) {
+            real normU = ux[].l2;
+            if (iter == 1) normU1 = normU;
+            else if (normU != normU || normU > 1e6*normU1) {
+                status = -1;
+                cout << "  stopped: displacement norm grew by more than 1e6 (diverging)" << endl;
+                break;
+            }
+        }
+
+        pfk       = pf;
+        [uxk,uyk] = [ux,uy];
+    };
+
+    if (status == 0 && abs(real(error)) <= tol && abs(real(error2)) <= tol) status = 1;
+    if (status == 1) iterTable[ifreq] = iter;
+    else             iterTable[ifreq] = -iter;
+    cout << "  -> f = " << A2[ifreq] << " Hz: " << iter << " iterations, status = " << status
+         << ", " << clock() - tFreq << " s" << endl;
+    {
+        ofstream fout(iterFile, append);
+        fout << A2[ifreq] << " " << iter << " " << status << " " << real(error) << " "
+             << real(error2) << endl;
+    }
+
+    // Plots 
+    VhPet reUx = real(ux), reUy = real(uy), imUx = imag(ux), imUy = imag(uy);
+    VhPet reP  = real(pf), imP  = imag(pf);
+    plot(reUy, wait=false, fill=true, value=true, nbiso=128, cmm="Re Uy, f = " + A2[ifreq]);
+    plot(reUx, wait=false, fill=true, value=true, nbiso=128, cmm="Re Ux, f = " + A2[ifreq]);
+    plot(reP,  wait=false, fill=true, value=true, nbiso=128, cmm="Re p, f = "  + A2[ifreq]);
+    savevtk("BiotSPE11b" + tag + "_f" + A2[ifreq] + ".vtu", Th,
+            [reUx, reUy, 0], [imUx, imUy, 0], reP, imP,
+            dataname = "ReU ImU ReP ImP");
+}
+
+cout << endl << "Final number of iterations (negative = not converged):" << endl;
+cout << "  freqHz  iterations" << endl;
+for (int ifreq = ifrStart; ifreq < nFreq; ++ifreq)
+    cout << "  " << A2[ifreq] << "  " << iterTable[ifreq] << endl;
